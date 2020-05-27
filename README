@@ -1,0 +1,29 @@
+IFT585 - TP #1
+
+Étienne Boutet - boue2327
+Raphael Valois - valr2802
+
+Le programme utilise Python 3.8, il est donc nécessaire de l'installer pour pouvoir utiliser le programme.
+
+Lien vers l'installation : `https://www.python.org/downloads/`
+
+*Note : Le programme peut ou ne pas fonctionner avec les versions inférieures à 3.8 elles n'ont pas été testé.
+
+USAGE
+======================================================
+
+Partir le serveur : `python script.py s`.
+
+Partir un client qui envoie un fichier `python script.py c s <fichier>`.
+
+Partir un client qui recoit un fichier `python script.py c r`.
+
+
+Le serveur s'attend d'envoyer le fichier `server` à un client, un nom différent ou l'absence de ce fichier fera planter le programme lorsqu'un client décide de recevoir.
+
+Si un client décide de recevoir, il recevera un fichier nommé FROM_SERVER_server.
+
+Si un client décide d'envoyer un fichier, le serveur recevera un fichier nommé FROM_CLIENT_<nom_du_fichier>.
+
+
+L'IP du serveur de base est `127.0.0.1` avec le port `9000`. Si vous souhaitez modifiez l'adresse et/ou le port vous devez modifier les variables du programme SERVER_IP et SERVER_PORT respectivement.
