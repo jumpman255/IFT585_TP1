@@ -9,7 +9,7 @@ import random
 SERVER_IP = "127.0.0.1"
 SERVER_PORT = 9000
 
-WINDOW_SIZE = 4 
+WINDOW_SIZE = 10
 
 # A CHANGER POUR -1 POUR ÉTAT NORMAL DU SCRIPT, CELA SERT SEULEMENT POUR TESTER
 FAIL_PROBABILITY = 0.2
@@ -89,7 +89,7 @@ class Sender:
         with open(file, "rb") as f:
             while True:
                 while lastPck - lastAckPck < WINDOW_SIZE and lastPck < totalPck:
-                    data = f.read(1)
+                    data = f.read(50000)
 
                     packet = Packet(lastPck, data, lastPck == totalPck - 1, file, totalPck)
 
