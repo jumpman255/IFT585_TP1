@@ -1,98 +1,116 @@
 import socket
 import sys
 import threading
+import pickle
+import os
+import math
+import random
 
 SERVER_IP = "127.0.0.1"
 SERVER_PORT = 9000
 
+WINDOW_SIZE = 10
+
+# A CHANGER POUR 0 POUR ÉTAT NORMAL DU SCRIPT, CELA SERT SEULEMENT POUR TESTER
+FAIL_PROBABILITY = 0
+
+
 class Packet:
-    def __init__(self, seq, data, last, filename, _hash=None):
+    def __init__(self, seq, data, last, filename, totalPck):
         self.seq = seq
         self.data = data
         self.last = last
         self.filename = filename
-        self.hash = _hash
+        self.totalPck = totalPck
+
 
 class Client:
-    def __init__(self, socket, isSender):
+    def __init__(self, socket, isSender, file):
         self.socket = socket
         # Si le client send du data ou recoit du data.
         self.isSender = isSender
+        self.file = file
 
     def file_transfer(self):
         if self.isSender:
             self.socket.sendto(str.encode("s"), (SERVER_IP, SERVER_PORT))
-            # TODO - Meilleur gestion
             packet, address = self.socket.recvfrom(1024)
+            packet = packet.decode("utf-8")
             if packet == "ok":
                 sender = Sender(self.socket, address)
-                sender.send()
+                sender.send(self.file)
         else:
             receiver = Receiver(self.socket, (SERVER_IP, SERVER_PORT))
-            # TODO - Meilleur gestion
             self.socket.sendto(str.encode("r"), (SERVER_IP, SERVER_PORT))
-            receiver.receive()  
+            receiver.receive("FROM_SERVER_")
 
-# Le serveur va attendre de se faire ping par un client pour emettre ou recevoir.
+
 class Server:
     def __init__(self, socket):
         self.socket = socket
 
     def handle_request(self, data, client_address):
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        # le 0 indique que le bind va se faire sur un port libre.
+
+        # le 0 indique qu'on va bind sur un port libre.
         s.bind((SERVER_IP, 0))
+        data = data.decode("utf-8")
+
         if data == 's':
             receiver = Receiver(s, client_address)
-            self.socket.sendto(str.encode("ok"), client_address)
-            receiver.receive()
+            s.sendto(str.encode("ok"), client_address)
+            receiver.receive("FROM_CLIENT_")
         elif data == 'r':
             sender = Sender(s, client_address)
-            sender.send()
+            sender.send("server")
 
     def wait_for_client(self):
         self.socket.bind((SERVER_IP, SERVER_PORT))
 
         while True:
             packet, address = self.socket.recvfrom(1200)
-            thread = threading.Thread(target = self.handle_request, args = (packet, address))
+            thread = threading.Thread(target=self.handle_request, args=(packet, address))
             thread.daemon = True
             thread.start()
+
 
 class Sender:
     def __init__(self, socket, address):
         self.socket = socket
         self.address = address
 
-    def send(self):
+    def send(self, file):
         lastPck = 0
         lastAckPck = 0
-        fileSize = os.path.getsize(filePath)
-        totalPck = math.ceil(fileSize / BUFFER_SIZE)  
+        fileSize = os.path.getsize(file)
+        totalPck = math.ceil(fileSize / 50000)
         sentPcks = []
 
-        with open("data.txt", "rb") as f:
+        with open(file, "rb") as f:
             while True:
                 while lastPck - lastAckPck < WINDOW_SIZE and lastPck < totalPck:
-                    data = f.read(BUFFER_SIZE)
+                    data = f.read(50000)
 
-                    isLast = lastPck == totalPck - 1
-                    packet = Packet(lastPck, data, isLast)
+                    packet = Packet(lastPck, data, lastPck == totalPck - 1, file, totalPck)
 
                     # pickle permet de serialiser l'objet
-                    self.socket.sendto(pickle.dumps(packet), self.address)
+                    print("Sending packet {0}/{1} to {2}:{3}".format(lastPck + 1, totalPck, self.address[0], self.address[1]))
+                    if random.uniform(0, 1) > FAIL_PROBABILITY:
+                        self.socket.sendto(pickle.dumps(packet), self.address)
+
                     sentPcks.append(packet)
 
                     lastPck += 1
 
-            # Recevoir le data
+                # Recevoir le data
                 try:
-                    self.socket.settimeout(10)
+                    self.socket.settimeout(0.5)
                     packet, _ = self.socket.recvfrom(1024)
-                    
+
                     pckSeq = int(packet)
-                    
+
                     if pckSeq == totalPck:
+                        print("Done sending all packets to {0}:{1}".format(self.address[0], self.address[1]))
                         break
 
                     lastAckPck = max(lastAckPck, pckSeq)
@@ -101,34 +119,46 @@ class Sender:
                     # Renvoyer les packet deja envoyes mais qui n'ont pas ete ack'd.
                     for i in range(lastAckPck, lastPck):
                         packet = pickle.dumps(sentPcks[i])
-                        self.socket.sendto(packet, (IP, PORT))
+                        print("REsending packet {0}/{1} to {2}:{3}".format(i + 1, totalPck, self.address[0], self.address[1]))
+                        if random.uniform(0, 1) > FAIL_PROBABILITY:
+                            self.socket.sendto(packet, self.address)
+
 
 class Receiver:
     def __init__(self, socket, address):
         self.socket = socket
         self.address = address
 
-    def receive(self):
+    def receive(self, prefix):
         waitingFor = 0
 
-        while True:
-            packet, address = self.socket.recvfrom(1200)
+        done = False
+        while not done:
+            packet, address = self.socket.recvfrom(65000)
             packet = pickle.loads(packet)
 
             if packet.seq == waitingFor:
+                print("Received packet {0}/{1} from {2}:{3}".format(waitingFor + 1, packet.totalPck, address[0], address[1]))
+
                 waitingFor += 1
 
-                with open("server.txt", "a+b") as f:
+                with open(prefix + packet.filename, "a+b") as f:
                     f.write(packet.data)
 
                 if packet.last:
-                    break
+                    print("Received all packets from {0}:{1}".format(address[0], address[1]))
+                    done = True
 
-            self.socket.sendto(str.encode(str(waitingFor)), address)
+            if random.uniform(0, 1) > FAIL_PROBABILITY:
+                self.socket.sendto(str.encode(str(waitingFor)), address)
+
 
 if sys.argv[1] == 's':
     server = Server(socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
     server.wait_for_client()
 else:
-    client = Client(socket.socket(socket.AF_INET, socket.SOCK_DGRAM), True if sys.argv[2] == 's' else False)
+    client = Client(
+            socket.socket(socket.AF_INET, socket.SOCK_DGRAM),
+            True if sys.argv[2] == 's' else False,
+            sys.argv[3] if len(sys.argv) == 4 else None)
     client.file_transfer()
