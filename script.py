@@ -9,10 +9,10 @@ import random
 SERVER_IP = "127.0.0.1"
 SERVER_PORT = 9000
 
-WINDOW_SIZE = 10
+WINDOW_SIZE = 4 
 
 # A CHANGER POUR -1 POUR ÉTAT NORMAL DU SCRIPT, CELA SERT SEULEMENT POUR TESTER
-FAIL_PROBABILITY = -1
+FAIL_PROBABILITY = 0.2
 
 
 class Packet:
@@ -83,13 +83,13 @@ class Sender:
         lastPck = 0
         lastAckPck = 0
         fileSize = os.path.getsize(file)
-        totalPck = math.ceil(fileSize / 50000)
+        totalPck = math.ceil(fileSize / 1)
         sentPcks = []
 
         with open(file, "rb") as f:
             while True:
                 while lastPck - lastAckPck < WINDOW_SIZE and lastPck < totalPck:
-                    data = f.read(50000)
+                    data = f.read(1)
 
                     packet = Packet(lastPck, data, lastPck == totalPck - 1, file, totalPck)
 
@@ -99,18 +99,17 @@ class Sender:
                         self.socket.sendto(pickle.dumps(packet), self.address)
 
                     sentPcks.append(packet)
-
                     lastPck += 1
 
                 # Recevoir le data
                 try:
-                    self.socket.settimeout(0.5)
+                    self.socket.settimeout(2)
                     packet, _ = self.socket.recvfrom(1024)
 
                     pckSeq = int(packet)
 
                     if pckSeq == totalPck:
-                        print("Done sending all packets to {0}:{1}".format(self.address[0], self.address[1]))
+                        print("Done sending {0}:{1}".format(self.address[0], self.address[1]))
                         break
 
                     lastAckPck = max(lastAckPck, pckSeq)
@@ -120,6 +119,7 @@ class Sender:
                     for i in range(lastAckPck, lastPck):
                         packet = pickle.dumps(sentPcks[i])
                         print("REsending packet {0}/{1} to {2}:{3}".format(i + 1, totalPck, self.address[0], self.address[1]))
+
                         if random.uniform(0, 1) > FAIL_PROBABILITY:
                             self.socket.sendto(packet, self.address)
 
@@ -131,26 +131,32 @@ class Receiver:
 
     def receive(self, prefix):
         waitingFor = 0
+        islastPckReceived = False
+        
+        self.socket.settimeout(3)
+        while True:
+            try:
+                packet, address = self.socket.recvfrom(65000)
+                packet = pickle.loads(packet)
 
-        done = False
-        while not done:
-            packet, address = self.socket.recvfrom(65000)
-            packet = pickle.loads(packet)
+                if packet.seq == waitingFor:
+                    print("Received packet {0}/{1} from {2}:{3}".format(waitingFor + 1, packet.totalPck, address[0], address[1]))
 
-            if packet.seq == waitingFor:
-                print("Received packet {0}/{1} from {2}:{3}".format(waitingFor + 1, packet.totalPck, address[0], address[1]))
+                    waitingFor += 1
 
-                waitingFor += 1
+                    with open(prefix + packet.filename, "a+b") as f:
+                        f.write(packet.data)
 
-                with open(prefix + packet.filename, "a+b") as f:
-                    f.write(packet.data)
+                    if packet.last:
+                        print("Received all packets from {0}:{1}".format(address[0], address[1]))
+                        islastPckReceived = True
 
-                if packet.last:
-                    print("Received all packets from {0}:{1}".format(address[0], address[1]))
-                    done = True
+                if random.uniform(0, 1) > FAIL_PROBABILITY:
+                    self.socket.sendto(str.encode(str(waitingFor)), address)
 
-            if random.uniform(0, 1) > FAIL_PROBABILITY:
-                self.socket.sendto(str.encode(str(waitingFor)), address)
+            except socket.timeout:
+                if islastPckReceived:
+                    break
 
 
 if sys.argv[1] == 's':
