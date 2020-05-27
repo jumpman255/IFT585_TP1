@@ -21,11 +21,11 @@ class Client:
 
     def file_transfer(self):
         if self.isSender:
-            sender = Sender(self.socket, (SERVER_IP, SERVER_PORT))
             self.socket.sendto(str.encode("s"), (SERVER_IP, SERVER_PORT))
             # TODO - Meilleur gestion
-            packet, _ = self.socket.recvfrom(1024)
+            packet, address = self.socket.recvfrom(1024)
             if packet == "ok":
+                sender = Sender(self.socket, address)
                 sender.send()
         else:
             receiver = Receiver(self.socket, (SERVER_IP, SERVER_PORT))
@@ -39,12 +39,15 @@ class Server:
         self.socket = socket
 
     def handle_request(self, data, client_address):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # le 0 indique que le bind va se faire sur un port libre.
+        s.bind((SERVER_IP, 0))
         if data == 's':
-            receiver = Receiver(self.socket, client_address)
+            receiver = Receiver(s, client_address)
             self.socket.sendto(str.encode("ok"), client_address)
             receiver.receive()
         elif data == 'r':
-            sender = Sender(self.socket, client_address)
+            sender = Sender(s, client_address)
             sender.send()
 
     def wait_for_client(self):
@@ -73,7 +76,8 @@ class Sender:
                 while lastPck - lastAckPck < WINDOW_SIZE and lastPck < totalPck:
                     data = f.read(BUFFER_SIZE)
 
-                    packet = Packet(lastPck, data, True if lastPck == totalPck - 1 else False)
+                    isLast = lastPck == totalPck - 1
+                    packet = Packet(lastPck, data, isLast)
 
                     # pickle permet de serialiser l'objet
                     self.socket.sendto(pickle.dumps(packet), self.address)
@@ -126,5 +130,5 @@ if sys.argv[1] == 's':
     server = Server(socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
     server.wait_for_client()
 else:
-    client = Client(socket.socket(socket.AF_INET, socket.SOCK_DGRAM), (True if sys.argv[2] == 's' else False))
+    client = Client(socket.socket(socket.AF_INET, socket.SOCK_DGRAM), True if sys.argv[2] == 's' else False)
     client.file_transfer()
