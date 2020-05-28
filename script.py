@@ -12,7 +12,7 @@ SERVER_PORT = 9000
 WINDOW_SIZE = 10
 
 # A CHANGER POUR -1 POUR ÉTAT NORMAL DU SCRIPT, CELA SERT SEULEMENT POUR TESTER
-FAIL_PROBABILITY = 0.2
+FAIL_PROBABILITY = -1
 
 
 class Packet:
@@ -83,7 +83,7 @@ class Sender:
         lastPck = 0
         lastAckPck = 0
         fileSize = os.path.getsize(file)
-        totalPck = math.ceil(fileSize / 1)
+        totalPck = math.ceil(fileSize / 50000)
         sentPcks = []
 
         with open(file, "rb") as f:
