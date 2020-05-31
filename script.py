@@ -103,7 +103,7 @@ class Sender:
 
                 # Recevoir le data
                 try:
-                    self.socket.settimeout(2)
+                    self.socket.settimeout(10)
                     packet, _ = self.socket.recvfrom(1024)
 
                     pckSeq = int(packet)
@@ -133,7 +133,7 @@ class Receiver:
         waitingFor = 0
         islastPckReceived = False
         
-        self.socket.settimeout(3)
+        self.socket.settimeout(10)
         while True:
             try:
                 packet, address = self.socket.recvfrom(65000)
